@@ -17,9 +17,10 @@ game_is_over = False
 bubble_blast = True
 bubble_start_time = 0
 bubble_end_time = 0
+is_red_bubble = False
 bubble_radius = 20
 bubble_threshold_time = 5
-bubble_threshold_drop_multiplier = 0.9
+bubble_threshold_drop_multiplier = 0.92
 bubble_X = None
 bubble_Y = None
 
@@ -202,7 +203,7 @@ def ask_to_start_the_game(frame, current_finger_point):
     frame, start_point_0, start_point_2 = show_start_game_message(frame)
     if(user_starts_the_game(current_finger_point, start_point_0, start_point_2)):
         print("New Game Started")
-        score = -score_increment
+        score = 0
         game_started = True
 
 def display_score(frame):
@@ -221,12 +222,33 @@ def display_score(frame):
         lineType)
     return frame
 
+def add_time_remaining(frame):
+    start_x0 = 300
+    start_y2 = 30
+    global bubble_start_time, bubble_threshold_time
+
+    font                   = cv2.FONT_HERSHEY_SIMPLEX
+    bottomLeftCornerOfText = (start_x0, start_y2)
+    fontScale              = 0.7
+    fontColor              = (255,255,255)
+    lineType               = 2
+    time_elapsed = time.time() - bubble_start_time
+    time_remaining = bubble_threshold_time - time_elapsed
+    frame = cv2.putText(frame, "Time remaining: " + str(round(time_remaining, 2)) + " sec", 
+        bottomLeftCornerOfText, 
+        font, 
+        fontScale,
+        fontColor,
+        lineType)
+    return frame
+
 def create_new_bubble(frame, bubble_X = None, bubble_Y = None):
     global bubble_blast
     global bubble_start_time
     global bubble_threshold_drop_multiplier
     global bubble_threshold_time
     global bubble_radius
+    global is_red_bubble
     bubble_blast = False
     
     x0, x3 = 60, 60
@@ -237,29 +259,36 @@ def create_new_bubble(frame, bubble_X = None, bubble_Y = None):
     if(bubble_X == None or bubble_Y == None):
         X = randrange(x0, x1)
         Y = randrange(y0, y2)
+        is_red_bubble = (randrange(0, 100000) % 4) == 0
         bubble_threshold_time *= bubble_threshold_drop_multiplier
         bubble_start_time = time.time()
 
     else: X, Y = bubble_X, bubble_Y
 
-    frame = cv2.circle(frame,(X,Y), bubble_radius, (0,255,0), -1)
+    if(is_red_bubble):
+        frame = cv2.circle(frame,(X,Y), bubble_radius, (0,0,255), -1)
+    else:
+        frame = cv2.circle(frame,(X,Y), bubble_radius, (0,255,0), -1)
+    frame = add_time_remaining(frame)
 
     return frame, X, Y
 
 def does_point_lie_inside_circle(X, Y, X_cicle, Y_circle, radius):
     distance_from_radius = (X - X_cicle) * (X - X_cicle) + (Y - Y_circle) * (Y - Y_circle)
+    radius *= 1.5
     return distance_from_radius <= radius * radius
 
 def check_for_bubble_blast(current_finger_point):
-    global bubble_X, bubble_Y, bubble_radius
+    global bubble_X, bubble_Y, bubble_radius, bubble_start_time
     if(bubble_X == None or bubble_Y == None): return True
     if(current_finger_point == None): return False
     (finger_X, finger_Y) = current_finger_point
     return does_point_lie_inside_circle(finger_X, finger_Y, bubble_X, bubble_Y, bubble_radius)
 
 def is_game_over():
-    global bubble_start_time, bubble_threshold_time, game_is_over
+    global bubble_start_time, bubble_threshold_time, game_is_over, is_red_bubble
     time_elapsed = time.time() - bubble_start_time
+    if(time_elapsed >= bubble_threshold_time and is_red_bubble): return False
     print("Time elapsed: " + str(time_elapsed))
     game_is_over = time_elapsed > bubble_threshold_time
     return (game_is_over)
@@ -296,16 +325,25 @@ def show_end_game_message(frame):
         lineType)
     return frame
 
+def does_new_bubble_should_come():
+    global bubble_start_time, bubble_blast, is_red_bubble, bubble_threshold_time, bubble_start_time
+    time_elapsed = time.time() - bubble_start_time
+    return ((is_red_bubble and bubble_blast == False and time_elapsed >= bubble_threshold_time) 
+            or (is_red_bubble == False and bubble_blast))
 
 def play_the_game(frame, current_finger_point):
     frame = display_score(frame)
-    global bubble_blast, score
+    global bubble_blast, score, is_red_bubble
     global bubble_X, bubble_Y, game_is_over
     if(game_is_over):
         frame = show_end_game_message(frame)
         return frame
     bubble_blast = check_for_bubble_blast(current_finger_point)
-    if(bubble_blast):
+    if(bubble_blast and is_red_bubble):
+        game_is_over = True
+        frame = show_end_game_message(frame)
+        return frame
+    if(does_new_bubble_should_come()):
         score += 10
         frame = display_score(frame)
         frame, bubble_X, bubble_Y = create_new_bubble(frame)
